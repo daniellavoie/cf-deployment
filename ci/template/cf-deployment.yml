@@ -1,12 +1,50 @@
-#! ======================================================================
-#! GENERATED FILE. DO NOT EDIT
-#! ======================================================================
+#@ load("@ytt:data", "data")
+#@ load("@ytt:template", "template")
 
+#@ def ship_it(version):
+name: #@ "ship-it-" + version
+public: true
+build_logs_to_retain: 100
+plan:
+  - do:
+    - get: runtime-ci
+    - get: cf-deployment-version
+      params:
+        bump: #@ version
+    - get: cf-deployment-develop
+    - get: cf-deployment-release-candidate
+      passed: [bless-manifest]
+    - task: update-cf-deployment-manifest-version
+      file: runtime-ci/tasks/record-cfd-version-in-manifest/task.yml
+    - put: cf-deployment-master
+      params:
+        repository: cf-deployment-rc-with-updated-version
+        tag: cf-deployment-version/version
+        tag_prefix: v
+    - put: cf-deployment-develop
+      params:
+        repository: cf-deployment-rc-with-updated-version
+        merge: true
+    - put: cf-deployment-version
+      params:
+        bump: #@ version
+#@ end
+
+#@ def load_ops_files(env):
+  #@ for e in data.values.envs:
+    #@ if e.name == env:
+      OPS_FILES: #@ e.deploy.params.OPS_FILES
+    #@ end
+  #@ end
+#@ end
+
+---
 groups:
 - name: cf-deployment
   jobs:
   - fresh-deploy
   - fresh-acquire-pool
+  #! - lite-release-pool
   - upgrade-deploy
   - upgrade-acquire-pool
   - upgrade-release-pool
@@ -78,6 +116,7 @@ groups:
   - lite-acquire-pool
   - lite-cats
   - lite-deploy
+  #! - lite-release-pool
   - lite-release-pool-manual
   - bless-manifest
 - name: st
@@ -90,6 +129,7 @@ groups:
   - stable-release-pool-manual
   - stable-update-cats-cfd-branch
   - cleanup-stable-periodic-cats
+
 resource_types:
 - name: terraform
   type: docker-image
@@ -99,66 +139,38 @@ resource_types:
   type: docker-image
   source:
     repository: cloudfoundry/bosh-deployment-resource
+
 resources:
-- name: fresh-pool
+
+#@ for e in data.values.envs:
+- name: #@ e.name + "-pool"
   type: pool
   source:
     uri: git@github.com:cloudfoundry/relint-ci-pools
     branch: master
-    pool: cf-deployment/fresh
+    pool: #@ "cf-deployment/" + e.name
     private_key: ((relint_ci_pools_readwrite_deploy_key.private_key))
-- name: experimental-pool
-  type: pool
-  source:
-    uri: git@github.com:cloudfoundry/relint-ci-pools
-    branch: master
-    pool: cf-deployment/experimental
-    private_key: ((relint_ci_pools_readwrite_deploy_key.private_key))
-- name: hermione-env-director-state
+
+#@ if hasattr(e, "env"):
+- name: #@ e.env + "-env-director-state"
   type: git
   source:
     branch: master
-    uri: git@github.com:cloudfoundry/hermione-env.git
-    private_key: ((hermione_env_readwrite_deploy_key.private_key))
-- name: upgrade-pool
-  type: pool
-  source:
-    uri: git@github.com:cloudfoundry/relint-ci-pools
-    branch: master
-    pool: cf-deployment/upgrade
-    private_key: ((relint_ci_pools_readwrite_deploy_key.private_key))
-- name: trelawney-env-director-state
-  type: git
-  source:
-    branch: master
-    uri: git@github.com:cloudfoundry/trelawney-env.git
-    private_key: ((trelawney_env_readwrite_deploy_key.private_key))
-- name: lite-pool
-  type: pool
-  source:
-    uri: git@github.com:cloudfoundry/relint-ci-pools
-    branch: master
-    pool: cf-deployment/lite
-    private_key: ((relint_ci_pools_readwrite_deploy_key.private_key))
-- name: snitch-env-director-state
-  type: git
-  source:
-    branch: master
-    uri: git@github.com:cloudfoundry/snitch-env.git
-    private_key: ((snitch_env_readwrite_deploy_key.private_key))
-- name: stable-pool
-  type: pool
-  source:
-    uri: git@github.com:cloudfoundry/relint-ci-pools
-    branch: master
-    pool: cf-deployment/stable
-    private_key: ((relint_ci_pools_readwrite_deploy_key.private_key))
-- name: bellatrix-env-director-state
-  type: git
-  source:
-    branch: master
-    uri: git@github.com:cloudfoundry/bellatrix-env.git
-    private_key: ((bellatrix_env_readwrite_deploy_key.private_key))
+    uri: #@ "git@github.com:cloudfoundry/" + e.env + "-env.git"
+    private_key: #@ "((" + e.env + "_env_readwrite_deploy_key.private_key))"
+
+#! - name: #@ e.env + "-env-integration-configs"
+#!   type: git
+#!   source:
+#!     branch: master
+#!     uri: #@ "git@github.com:cloudfoundry/" + e.env + "-env.git"
+#!     private_key: #@ "((" + e.env + "_env_readwrite_deploy_key.private_key))"
+#!     paths:
+#!     - integration_config.json
+#!     - reporter_config.json
+#@ end
+#@ end
+
 - name: bellatrix-env-integration-configs
   type: git
   source:
@@ -168,12 +180,14 @@ resources:
     paths:
     - integration_config.json
     - reporter_config.json
+
 - name: relint-envs
   type: git
   source:
     branch: master
     uri: git@github.com:cloudfoundry/relint-envs.git
     private_key: ((hagrid_env_readwrite_deploy_key.private_key))
+
 - name: trelawney-env-integration-configs
   type: git
   source:
@@ -202,6 +216,7 @@ resources:
   source:
     branch: master
     uri: https://github.com/cloudfoundry/runtime-ci.git
+
 - name: hermione-env-integration-configs
   type: git
   source:
@@ -211,6 +226,7 @@ resources:
     paths:
     - integration_config.json
     - reporter_config.json
+
 - name: hermione-env-turbulence-manifest
   type: git
   source:
@@ -219,6 +235,7 @@ resources:
     private_key: ((hermione_env_readwrite_deploy_key.private_key))
     paths:
     - turbulence.yml
+
 - name: cf-deployment-develop
   type: git
   source:
@@ -280,6 +297,7 @@ resources:
   source:
     branch: master
     uri: https://github.com/cloudfoundry/bosh-deployment.git
+
 - name: cf-deployment-version
   type: semver
   source:
@@ -287,14 +305,16 @@ resources:
     uri: git@github.com:cloudfoundry/cf-relint-ci-semver.git
     branch: master
     private_key: ((cf_relint_ci_semver_readwrite_deploy_key.private_key))
-    git_user: CF MEGA BOT <cf-mega@pivotal.io>
+    git_user: "CF MEGA BOT <cf-mega@pivotal.io>"
     file: cf-deployment-version
+
 - name: deliver-tracker-story
   type: tracker
   source:
     token: ((cf_relint_tracker_api_token))
     project_id: "1382120"
     tracker_url: https://www.pivotaltracker.com
+
 jobs:
 - name: branch-freshness
   public: true
@@ -308,117 +328,36 @@ jobs:
     file: runtime-ci/tasks/validate-branch-freshness/task.yml
     input_mapping:
       repo: cf-deployment-all-branches
-- name: fresh-acquire-pool
+
+
+#@ for e in data.values.envs:
+- name: #@ e.name + "-acquire-pool"
   serial: true
   public: true
   plan:
   - aggregate:
+    #@ if hasattr(e, "cf_d_branch"):
+    - get: #@ "cf-deployment-" + e.cf_d_branch
+      trigger: true
+    #@ else:
     - get: cf-deployment-develop
       trigger: true
-      passed:
-      - unit-test-ops-files
-      - unit-test-golang-tests
-      - unit-test-update-releases-coverage
-    - put: fresh-pool
-      params:
-        acquire: true
-- name: fresh-release-pool-manual
+      passed: [unit-test-ops-files, unit-test-golang-tests, unit-test-update-releases-coverage]
+    #@ end
+    - put: #@ e.name + "-pool"
+      params: {acquire: true}
+
+- name: #@ e.name + "-release-pool-manual"
   public: true
   plan:
-  - get: fresh-pool
+  - get: #@ e.name + "-pool"
   ensure:
     try:
-      put: fresh-pool
+      put: #@ e.name + "-pool"
       params:
-        release: fresh-pool
-- name: experimental-acquire-pool
-  serial: true
-  public: true
-  plan:
-  - aggregate:
-    - get: cf-deployment-develop
-      trigger: true
-      passed:
-      - unit-test-ops-files
-      - unit-test-golang-tests
-      - unit-test-update-releases-coverage
-    - put: experimental-pool
-      params:
-        acquire: true
-- name: experimental-release-pool-manual
-  public: true
-  plan:
-  - get: experimental-pool
-  ensure:
-    try:
-      put: experimental-pool
-      params:
-        release: experimental-pool
-- name: upgrade-acquire-pool
-  serial: true
-  public: true
-  plan:
-  - aggregate:
-    - get: cf-deployment-develop
-      trigger: true
-      passed:
-      - unit-test-ops-files
-      - unit-test-golang-tests
-      - unit-test-update-releases-coverage
-    - put: upgrade-pool
-      params:
-        acquire: true
-- name: upgrade-release-pool-manual
-  public: true
-  plan:
-  - get: upgrade-pool
-  ensure:
-    try:
-      put: upgrade-pool
-      params:
-        release: upgrade-pool
-- name: lite-acquire-pool
-  serial: true
-  public: true
-  plan:
-  - aggregate:
-    - get: cf-deployment-develop
-      trigger: true
-      passed:
-      - unit-test-ops-files
-      - unit-test-golang-tests
-      - unit-test-update-releases-coverage
-    - put: lite-pool
-      params:
-        acquire: true
-- name: lite-release-pool-manual
-  public: true
-  plan:
-  - get: lite-pool
-  ensure:
-    try:
-      put: lite-pool
-      params:
-        release: lite-pool
-- name: stable-acquire-pool
-  serial: true
-  public: true
-  plan:
-  - aggregate:
-    - get: cf-deployment-master
-      trigger: true
-    - put: stable-pool
-      params:
-        acquire: true
-- name: stable-release-pool-manual
-  public: true
-  plan:
-  - get: stable-pool
-  ensure:
-    try:
-      put: stable-pool
-      params:
-        release: stable-pool
+        release: #@ e.name + "-pool"
+#@ end
+
 - name: lint-cf-deployment-manifest
   serial: false
   public: true
@@ -441,9 +380,11 @@ jobs:
         - -exc
         - |
           ruby -e "require 'yaml'; YAML.load_file('./cf-deployment-develop/cf-deployment.yml')"
+
 - name: unit-test-golang-tests
   serial: true
   public: true
+  #! build_logs_to_retain: 100
   plan:
   - get: cf-deployment-develop
     trigger: true
@@ -456,9 +397,12 @@ jobs:
           repository: relintdockerhubpushbot/bosh-cli
       inputs:
       - name: cf-deployment-develop
+      #! params:
+      #!   RUN_SEMANTIC: true
       run:
         dir: cf-deployment-develop/units
         path: ./test
+
 - name: unit-test-ops-files
   serial: true
   public: true
@@ -480,6 +424,7 @@ jobs:
       run:
         dir: cf-deployment-develop
         path: scripts/test
+
 - name: unit-test-update-releases-coverage
   serial: true
   public: true
@@ -501,20 +446,18 @@ jobs:
       run:
         dir: runtime-ci
         path: scripts/tests/update-releases-coverage-test
+
 - name: fresh-deploy
-  serial_groups:
-  - luna-smokes
+  serial_groups: [ luna-smokes ]
   public: true
   build_logs_to_retain: 100
   plan:
   - get: fresh-pool
     trigger: true
-    passed:
-    - fresh-acquire-pool
+    passed: [fresh-acquire-pool]
   - aggregate:
     - get: cf-deployment-develop
-      passed:
-      - fresh-acquire-pool
+      passed: [fresh-acquire-pool]
     - get: cf-deployment-concourse-tasks
     - get: runtime-ci
     - get: relint-envs
@@ -544,18 +487,7 @@ jobs:
       ops-files: collected-ops-files
       vars-files: relint-envs
     params:
-      OPS_FILES: |
-        operations/experimental/fast-deploy-with-downtime-and-danger.yml
-        operations/use-compiled-releases.yml
-        operations/rename-network-and-deployment.yml
-        operations/set-bbs-active-key.yml
-        operations/test/add-persistent-isolation-segment-diego-cell.yml
-        operations/test/add-persistent-isolation-segment-router.yml
-        operations/rename-isolation-segment-network.yml
-        operations/addons/enable-component-syslog.yml
-        operations/use-postgres.yml
-        operations/experimental/enable-tls-cloud-controller-postgres.yml
-        operations/change-postgres-max-connections.yml
+      _: #@ template.replace(load_ops_files("fresh"))
       BBL_STATE_DIR: environments/test/luna/bbl-state
       SYSTEM_DOMAIN: luna.cf-app.com
       VARS_FILES: |
@@ -564,6 +496,7 @@ jobs:
         environments/test/luna/bbs-key-label.yml
         environments/test/luna/syslog-vars.yml
       REGENERATE_CREDENTIALS: true
+
   - task: run-bosh-cleanup
     file: cf-deployment-concourse-tasks/bosh-cleanup/task.yml
     input_mapping:
@@ -627,6 +560,7 @@ jobs:
         ENABLED_FEATURE_FLAGS: |
           diego_docker
           task_creation
+
 - name: upgrade-deploy
   serial: true
   public: true
@@ -634,12 +568,10 @@ jobs:
   plan:
   - get: upgrade-pool
     trigger: true
-    passed:
-    - upgrade-acquire-pool
+    passed: [upgrade-acquire-pool]
   - aggregate:
     - get: cf-deployment-develop
-      passed:
-      - upgrade-acquire-pool
+      passed: [upgrade-acquire-pool]
     - get: cf-deployment-concourse-tasks
     - get: runtime-ci
     - get: trelawney-env-integration-configs
@@ -668,20 +600,7 @@ jobs:
       ops-files: collected-ops-files
       vars-files: trelawney-env-director-state
     params:
-      OPS_FILES: |
-        operations/use-compiled-releases.yml
-        operations/use-external-dbs.yml
-        operations/add-external-ips-for-cloud-sql-db.yml
-        operations/windows2012R2-cell.yml
-        operations/windows1803-cell.yml
-        operations/experimental/use-compiled-releases-windows.yml
-        operations/bits-service/use-bits-service.yml
-        operations/use-external-blobstore.yml
-        operations/use-gcs-blobstore-service-account.yml
-        operations/bits-service/configure-bits-service-gcs-service-account.yml
-        operations/enable-service-discovery.yml
-        operations/test/add-persistent-isolation-segment-diego-cell.yml
-        operations/increase-doppler-vm-type-from-minimal-to-small.yml
+      _: #@ template.replace(load_ops_files("upgrade"))
       SYSTEM_DOMAIN: trelawney.cf-app.com
       VARS_FILES: |
         external-db-vars.yml
@@ -740,28 +659,34 @@ jobs:
           diego_docker
           task_creation
           service_instance_sharing
+
 - name: experimental-release-pool
   public: true
   plan:
   - get: experimental-pool
-    passed:
-    - experimental-cats
-    - experimental-smoke-tests
+    passed: [ experimental-cats, experimental-smoke-tests ]
     trigger: true
   - put: experimental-pool
-    params:
-      release: experimental-pool
+    params: {release: experimental-pool}
+
+#! - name: lite-release-pool
+#!   public: true
+#!   plan:
+#!   - get: lite-pool
+#!     passed: [ lite-cats ]
+#!     trigger: true
+#!   - put: lite-pool
+#!     params: {release: lite-pool}
+
 - name: upgrade-release-pool
   public: true
   plan:
   - get: upgrade-pool
-    passed:
-    - upgrade-cats
-    - upgrade-cats-windows2016
+    passed: [ upgrade-cats, upgrade-cats-windows2016 ]
     trigger: true
   - put: upgrade-pool
-    params:
-      release: upgrade-pool
+    params: {release: upgrade-pool}
+
 - name: experimental-ops-files
   public: true
   build_logs_to_retain: 100
@@ -769,30 +694,25 @@ jobs:
   - aggregate:
     - get: experimental-pool
       trigger: true
-      passed:
-      - experimental-acquire-pool
+      passed: [ experimental-acquire-pool ]
     - get: runtime-ci
   - task: experimental-ops-files
     file: runtime-ci/tasks/summarize-ops-files/task.yml
+
 - name: experimental-deploy
-  serial_groups:
-  - hermione-wats
-  - hermione-cats
-  - hermione-smokes
+  serial_groups: [ hermione-wats, hermione-cats, hermione-smokes ]
   public: true
   build_logs_to_retain: 100
   plan:
   - do:
     - get: experimental-pool
       trigger: true
-      passed:
-      - experimental-acquire-pool
+      passed: [ experimental-acquire-pool ]
     - aggregate:
       - get: runtime-ci
       - get: cf-deployment-concourse-tasks
       - get: cf-deployment-develop
-        passed:
-        - experimental-acquire-pool
+        passed: [ experimental-acquire-pool ]
       - get: hermione-env-turbulence-manifest
       - get: hermione-env-director-state
       - get: hermione-env-integration-configs
@@ -819,21 +739,7 @@ jobs:
         ops-files: collected-ops-files
         vars-files: hermione-env-director-state
       params:
-        OPS_FILES: |
-          operations/use-compiled-releases.yml
-          operations/use-external-blobstore.yml
-          operations/use-s3-blobstore.yml
-          operations/bits-service/use-bits-service.yml
-          operations/bits-service/configure-bits-service-s3.yml
-          operations/scale-database-cluster.yml
-          operations/stop-skipping-tls-validation.yml
-          operations/use-operator-provided-router-tls-certificates.yml
-          operations/experimental/enable-iptables-logger.yml
-          operations/experimental/set-cpu-weight.yml
-          operations/experimental/deploy-forwarder-agent.yml
-          operations/experimental/use-logcache-for-cloud-controller-app-stats.yml
-          operations/experimental/add-syslog-agent.yml
-          operations/increase-doppler-vm-type-from-minimal-to-small.yml
+        _: #@ template.replace(load_ops_files("experimental"))
         SYSTEM_DOMAIN: hermione.cf-app.com
         VARS_FILES: |
           bbl-state/vars/director-vars-file.yml
@@ -891,21 +797,19 @@ jobs:
             diego_docker
             task_creation
             service_instance_sharing
+
 - name: stable-deploy
-  serial_groups:
-  - bellatrix-smokes
+  serial_groups: [ bellatrix-smokes ]
   public: true
   build_logs_to_retain: 100
   plan:
   - on_success:
       put: stable-pool
-      params:
-        release: stable-pool
+      params: {release: stable-pool}
     do:
     - get: stable-pool
       trigger: true
-      passed:
-      - stable-acquire-pool
+      passed: [ stable-acquire-pool ]
     - aggregate:
       - get: runtime-ci
       - get: cf-deployment-concourse-tasks
@@ -918,7 +822,7 @@ jobs:
         base-ops-files: cf-deployment-master
         new-ops-files: bellatrix-env-director-state
       params:
-        BASE_OPS_FILE_DIR: operations
+        BASE_OPS_FILE_DIR: "operations"
         NEW_OPS_FILES: |
           decrease-cc-event-retention.yml
     - task: bosh-deploy-cf
@@ -929,10 +833,7 @@ jobs:
         ops-files: collected-ops-files
         vars-files: bellatrix-env-director-state
       params:
-        OPS_FILES: |
-          operations/scale-database-cluster.yml
-          operations/windows2016-cell.yml
-          operations/decrease-cc-event-retention.yml
+        _: #@ template.replace(load_ops_files("stable"))
         SYSTEM_DOMAIN: bellatrix.cf-app.com
     - task: run-bosh-cleanup
       file: cf-deployment-concourse-tasks/bosh-cleanup/task.yml
@@ -966,24 +867,22 @@ jobs:
         INSTANCE_GROUP_NAME: uaa
         SYSTEM_DOMAIN: bellatrix.cf-app.com
         SECURITY_GROUP_NAME: uaa
+
 - name: lite-deploy
   public: true
-  serial_groups:
-  - snitch-cats
+  serial_groups: [ snitch-cats ]
   build_logs_to_retain: 100
   plan:
   - timeout: 4h
     do:
     - get: lite-pool
       trigger: true
-      passed:
-      - lite-acquire-pool
+      passed: [lite-acquire-pool]
     - aggregate:
       - get: runtime-ci
       - get: cf-deployment-concourse-tasks
       - get: cf-deployment-develop
-        passed:
-        - lite-acquire-pool
+        passed: [lite-acquire-pool]
       - get: bosh-deployment
       - get: snitch-env-director-state
       - get: snitch-env-integration-configs
@@ -1011,13 +910,7 @@ jobs:
         ops-files: collected-ops-files
         vars-files: snitch-env-director-state
       params:
-        OPS_FILES: |
-          operations/use-default-route-registrar-timeout-for-api.yml
-          operations/experimental/fast-deploy-with-downtime-and-danger.yml
-          operations/use-compiled-releases.yml
-          operations/bosh-lite.yml
-          operations/use-debug-level-logging.yml
-          operations/use-external-dbs.yml
+        _: #@ template.replace(load_ops_files("lite"))
         SYSTEM_DOMAIN: snitch.cf-app.com
         VARS_FILES: |
           ddog.yml
@@ -1066,9 +959,9 @@ jobs:
           ENABLED_FEATURE_FLAGS: |
             diego_docker
             task_creation
+
 - name: experimental-cats
-  serial_groups:
-  - hermione-cats
+  serial_groups: [ hermione-cats ]
   public: true
   build_logs_to_retain: 100
   plan:
@@ -1076,14 +969,12 @@ jobs:
     do:
     - get: experimental-pool
       trigger: true
-      passed:
-      - experimental-deploy
+      passed: [ experimental-deploy ]
     - aggregate:
       - get: cf-acceptance-tests-rc
       - get: hermione-env-integration-configs
       - get: cf-deployment-develop
-        passed:
-        - experimental-deploy
+        passed: [ experimental-deploy ]
       - get: cf-deployment-concourse-tasks
     - task: run-cats
       input_mapping:
@@ -1092,22 +983,20 @@ jobs:
       file: cf-deployment-concourse-tasks/run-cats/task.yml
       params:
         RELINT_VERBOSE_AUTH: "true"
+
 - name: experimental-smoke-tests
   public: true
-  serial_groups:
-  - hermione-smokes
+  serial_groups: [ hermione-smokes ]
   build_logs_to_retain: 100
   plan:
   - do:
     - get: experimental-pool
-      passed:
-      - experimental-deploy
+      passed: [ experimental-deploy ]
       trigger: true
     - aggregate:
       - get: hermione-env-director-state
       - get: cf-deployment-develop
-        passed:
-        - experimental-deploy
+        passed: [ experimental-deploy ]
       - get: cf-deployment-concourse-tasks
     timeout: 1h
   - task: bosh-run-errand-smoke-tests
@@ -1116,22 +1005,20 @@ jobs:
       ERRAND_NAME: smoke-tests
     input_mapping:
       bbl-state: hermione-env-director-state
+
 - name: fresh-smoke-tests
   public: true
-  serial_groups:
-  - luna-smokes
+  serial_groups: [ luna-smokes ]
   build_logs_to_retain: 100
   plan:
   - do:
     - get: fresh-pool
-      passed:
-      - fresh-deploy
+      passed: [ fresh-deploy ]
       trigger: true
     - aggregate:
       - get: relint-envs
       - get: cf-deployment-develop
-        passed:
-        - fresh-deploy
+        passed: [ fresh-deploy ]
       - get: cf-deployment-concourse-tasks
     timeout: 1h
   - task: bosh-run-errand-smoke-tests
@@ -1142,9 +1029,9 @@ jobs:
       DEPLOYMENT_NAME: luna-cf
     input_mapping:
       bbl-state: relint-envs
+
 - name: stable-smoke-tests
-  serial_groups:
-  - bellatrix-smokes
+  serial_groups: [bellatrix-smokes]
   public: true
   build_logs_to_retain: 100
   plan:
@@ -1152,15 +1039,12 @@ jobs:
     do:
     - get: stable-pool
       trigger: true
-      passed:
-      - stable-deploy
+      passed: [stable-deploy]
     - aggregate:
       - get: bellatrix-env-director-state
-        passed:
-        - stable-deploy
+        passed: [stable-deploy]
       - get: cf-deployment-master
-        passed:
-        - stable-deploy
+        passed: [stable-deploy]
       - get: cf-deployment-concourse-tasks
   - task: bosh-run-errand-smoke-tests
     file: cf-deployment-concourse-tasks/run-errand/task.yml
@@ -1170,8 +1054,8 @@ jobs:
       ERRAND_NAME: smoke-tests
     on_failure:
       put: stable-pool
-      params:
-        release: stable-pool
+      params: {release: stable-pool}
+
 - name: stable-semihourly-pool-acquisition
   serial: true
   public: true
@@ -1182,8 +1066,8 @@ jobs:
     - get: half-hourly
       trigger: true
     - put: stable-pool
-      params:
-        claim: bellatrix
+      params: {claim: bellatrix}
+
 - name: stable-periodic-cats
   serial: true
   public: true
@@ -1192,21 +1076,18 @@ jobs:
   - timeout: 4h
     on_failure:
       put: stable-pool
-      params:
-        release: stable-pool
+      params: {release: stable-pool}
     do:
     - get: stable-pool
       trigger: true
-      passed:
-      - stable-semihourly-pool-acquisition
+      passed: [ stable-semihourly-pool-acquisition ]
     - aggregate:
       - get: cf-deployment-concourse-tasks
       - get: cf-acceptance-tests
       - get: bellatrix-env-integration-configs
       - get: bellatrix-env-director-state
       - get: cf-deployment-master
-        passed:
-        - stable-deploy
+        passed: [ stable-deploy ]
     - task: enable-docker-and-tasks
       file: cf-deployment-concourse-tasks/set-feature-flags/task.yml
       input_mapping:
@@ -1224,6 +1105,7 @@ jobs:
       params:
         FLAKE_ATTEMPTS: 0
         RELINT_VERBOSE_AUTH: "true"
+
 - name: cleanup-stable-periodic-cats
   serial: true
   public: true
@@ -1233,8 +1115,7 @@ jobs:
     do:
     - get: stable-pool
       trigger: true
-      passed:
-      - stable-periodic-cats
+      passed: [ stable-periodic-cats ]
     - aggregate:
       - get: runtime-ci
       - get: bellatrix-env-integration-configs
@@ -1242,6 +1123,7 @@ jobs:
       file: runtime-ci/tasks/cleanup-after-cats/task.yml
       input_mapping:
         integration-config: bellatrix-env-integration-configs
+
 - name: stable-update-cats-cfd-branch
   public: true
   build_logs_to_retain: 100
@@ -1249,27 +1131,24 @@ jobs:
   - timeout: 4h
     ensure:
       put: stable-pool
-      params:
-        release: stable-pool
+      params: {release: stable-pool}
     do:
     - get: stable-pool
       trigger: true
-      passed:
-      - stable-periodic-cats
+      passed: [ stable-periodic-cats ]
     - aggregate:
       - get: runtime-ci
       - get: cf-deployment-master
-        passed:
-        - stable-periodic-cats
+        passed: [ stable-periodic-cats ]
       - get: cf-acceptance-tests
-        passed:
-        - stable-periodic-cats
+        passed: [ stable-periodic-cats ]
     - task: update-branch
       file: runtime-ci/tasks/update-cats-branch-with-cf-deployment-version/task.yml
       input_mapping:
         cf-deployment: cf-deployment-master
       params:
         DEPLOY_KEY: ((cf_acceptance_tests_readwrite_deploy_key.private_key))
+
 - name: fresh-cats
   serial: true
   public: true
@@ -1279,15 +1158,13 @@ jobs:
     do:
     - get: fresh-pool
       trigger: true
-      passed:
-      - fresh-deploy
+      passed: [ fresh-deploy ]
     - aggregate:
       - get: cf-deployment-concourse-tasks
       - get: cf-acceptance-tests-rc
       - get: relint-envs
       - get: cf-deployment-develop
-        passed:
-        - fresh-deploy
+        passed: [ fresh-deploy ]
     - task: run-cats
       file: cf-deployment-concourse-tasks/run-cats/task.yml
       input_mapping:
@@ -1298,6 +1175,7 @@ jobs:
         REPORTER_CONFIG_FILE_PATH: environments/test/luna/reporter_config.json
         CAPTURE_LOGS: true
         RELINT_VERBOSE_AUTH: "true"
+
 - name: upgrade-cats
   serial: true
   public: true
@@ -1307,15 +1185,13 @@ jobs:
     do:
     - get: upgrade-pool
       trigger: true
-      passed:
-      - upgrade-deploy
+      passed: [upgrade-deploy]
     - aggregate:
       - get: cf-deployment-concourse-tasks
       - get: cf-acceptance-tests-rc
       - get: trelawney-env-integration-configs
       - get: cf-deployment-develop
-        passed:
-        - upgrade-deploy
+        passed: [upgrade-deploy]
     - task: run-cats
       file: cf-deployment-concourse-tasks/run-cats/task.yml
       input_mapping:
@@ -1324,6 +1200,7 @@ jobs:
       params:
         CAPTURE_LOGS: true
         RELINT_VERBOSE_AUTH: "true"
+
 - name: upgrade-cats-windows2016
   serial: true
   public: true
@@ -1333,15 +1210,13 @@ jobs:
     do:
     - get: upgrade-pool
       trigger: true
-      passed:
-      - upgrade-deploy
+      passed: [upgrade-deploy]
     - aggregate:
       - get: cf-deployment-concourse-tasks
       - get: cf-acceptance-tests-rc
       - get: trelawney-env-integration-configs
       - get: cf-deployment-develop
-        passed:
-        - upgrade-deploy
+        passed: [upgrade-deploy]
     - task: run-cats
       file: cf-deployment-concourse-tasks/run-cats/task.yml
       input_mapping:
@@ -1352,9 +1227,9 @@ jobs:
         CONFIG_FILE_PATH: cats_windows2016_integration_config.json
         NODES: 8
         RELINT_VERBOSE_AUTH: "true"
+
 - name: lite-cats
-  serial_groups:
-  - snitch-cats
+  serial_groups: [ snitch-cats ]
   public: true
   build_logs_to_retain: 100
   plan:
@@ -1362,13 +1237,11 @@ jobs:
     do:
     - get: lite-pool
       trigger: true
-      passed:
-      - lite-deploy
+      passed: [ lite-deploy ]
     - aggregate:
       - get: cf-acceptance-tests-rc
       - get: cf-deployment-develop
-        passed:
-        - lite-deploy
+        passed: [ lite-deploy ]
       - get: snitch-env-integration-configs
       - get: cf-deployment-concourse-tasks
     - task: run-cats
@@ -1381,8 +1254,8 @@ jobs:
         RELINT_VERBOSE_AUTH: "true"
       ensure:
         put: lite-pool
-        params:
-          release: lite-pool
+        params: {release: lite-pool}
+
 - name: fresh-delete-deployment
   serial: true
   public: true
@@ -1407,8 +1280,8 @@ jobs:
         DEPLOYMENT_NAME: luna-cf
         IGNORE_ERRORS: true
     - put: fresh-pool
-      params:
-        release: fresh-pool
+      params: {release: fresh-pool}
+
 - name: bless-manifest
   public: true
   serial: true
@@ -1429,7 +1302,8 @@ jobs:
   - put: deliver-tracker-story
     params:
       repos:
-      - cf-deployment-develop
+        - cf-deployment-develop
+
 - name: release-notes-template
   public: true
   build_logs_to_retain: 100
@@ -1443,84 +1317,7 @@ jobs:
       trigger: true
   - task: generate-cf-deployment-release-notes-template
     file: runtime-ci/tasks/cf-deployment-release-notes-template/task.yml
-- name: ship-it-patch
-  public: true
-  build_logs_to_retain: 100
-  plan:
-  - do:
-    - get: runtime-ci
-    - get: cf-deployment-version
-      params:
-        bump: patch
-    - get: cf-deployment-develop
-    - get: cf-deployment-release-candidate
-      passed:
-      - bless-manifest
-    - task: update-cf-deployment-manifest-version
-      file: runtime-ci/tasks/record-cfd-version-in-manifest/task.yml
-    - put: cf-deployment-master
-      params:
-        repository: cf-deployment-rc-with-updated-version
-        tag: cf-deployment-version/version
-        tag_prefix: v
-    - put: cf-deployment-develop
-      params:
-        repository: cf-deployment-rc-with-updated-version
-        merge: true
-    - put: cf-deployment-version
-      params:
-        bump: patch
-- name: ship-it-minor
-  public: true
-  build_logs_to_retain: 100
-  plan:
-  - do:
-    - get: runtime-ci
-    - get: cf-deployment-version
-      params:
-        bump: minor
-    - get: cf-deployment-develop
-    - get: cf-deployment-release-candidate
-      passed:
-      - bless-manifest
-    - task: update-cf-deployment-manifest-version
-      file: runtime-ci/tasks/record-cfd-version-in-manifest/task.yml
-    - put: cf-deployment-master
-      params:
-        repository: cf-deployment-rc-with-updated-version
-        tag: cf-deployment-version/version
-        tag_prefix: v
-    - put: cf-deployment-develop
-      params:
-        repository: cf-deployment-rc-with-updated-version
-        merge: true
-    - put: cf-deployment-version
-      params:
-        bump: minor
-- name: ship-it-major
-  public: true
-  build_logs_to_retain: 100
-  plan:
-  - do:
-    - get: runtime-ci
-    - get: cf-deployment-version
-      params:
-        bump: major
-    - get: cf-deployment-develop
-    - get: cf-deployment-release-candidate
-      passed:
-      - bless-manifest
-    - task: update-cf-deployment-manifest-version
-      file: runtime-ci/tasks/record-cfd-version-in-manifest/task.yml
-    - put: cf-deployment-master
-      params:
-        repository: cf-deployment-rc-with-updated-version
-        tag: cf-deployment-version/version
-        tag_prefix: v
-    - put: cf-deployment-develop
-      params:
-        repository: cf-deployment-rc-with-updated-version
-        merge: true
-    - put: cf-deployment-version
-      params:
-        bump: major
+
+- #@ ship_it("patch")
+- #@ ship_it("minor")
+- #@ ship_it("major")

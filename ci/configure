@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 
 main() {
   local CF_D_PIPELINES=(cf-deployment update-releases pull-requests bbr)
@@ -16,6 +16,20 @@ EOF
                  "${PROJECT_DIR}/ci/template/${PIPELINE}.yml" \
                  --input-file "${PROJECT_DIR}/ci/input/${PIPELINE}.yml" \
                  >> "${PROJECT_DIR}/ci/pipelines/${PIPELINE}.yml"
+
+  elif [[ "${PIPELINE}" == "cf-deployment" ]]; then
+    cat > "${PROJECT_DIR}/ci/pipelines/${PIPELINE}.yml" <<EOF
+#! ======================================================================
+#! GENERATED FILE. DO NOT EDIT
+#! ======================================================================
+
+EOF
+
+    ytt template \
+      -f "${PROJECT_DIR}/ci/input/${PIPELINE}.yml" \
+      -f "${PROJECT_DIR}/ci/template/${PIPELINE}.yml" \
+      >> "${PROJECT_DIR}/ci/pipelines/${PIPELINE}.yml"
+
   fi
 
   set -ex

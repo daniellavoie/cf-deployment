@@ -1,0 +1,75 @@
+#@data/values
+---
+envs:
+- name: fresh
+  deploy:
+    params:
+      OPS_FILES: |
+        operations/experimental/fast-deploy-with-downtime-and-danger.yml
+        operations/use-compiled-releases.yml
+        operations/rename-network-and-deployment.yml
+        operations/set-bbs-active-key.yml
+        operations/test/add-persistent-isolation-segment-diego-cell.yml
+        operations/test/add-persistent-isolation-segment-router.yml
+        operations/rename-isolation-segment-network.yml
+        operations/addons/enable-component-syslog.yml
+        operations/use-postgres.yml
+        operations/experimental/enable-tls-cloud-controller-postgres.yml
+        operations/change-postgres-max-connections.yml
+- name: experimental
+  env: hermione
+  deploy:
+    params:
+      OPS_FILES: |
+        operations/use-compiled-releases.yml
+        operations/use-external-blobstore.yml
+        operations/use-s3-blobstore.yml
+        operations/bits-service/use-bits-service.yml
+        operations/bits-service/configure-bits-service-s3.yml
+        operations/scale-database-cluster.yml
+        operations/stop-skipping-tls-validation.yml
+        operations/use-operator-provided-router-tls-certificates.yml
+        operations/experimental/enable-iptables-logger.yml
+        operations/experimental/set-cpu-weight.yml
+        operations/experimental/deploy-forwarder-agent.yml
+        operations/experimental/use-logcache-for-cloud-controller-app-stats.yml
+        operations/experimental/add-syslog-agent.yml
+        operations/increase-doppler-vm-type-from-minimal-to-small.yml
+- name: upgrade
+  env: trelawney
+  deploy:
+    params:
+      OPS_FILES: |
+        operations/use-compiled-releases.yml
+        operations/use-external-dbs.yml
+        operations/add-external-ips-for-cloud-sql-db.yml
+        operations/windows2012R2-cell.yml
+        operations/windows1803-cell.yml
+        operations/experimental/use-compiled-releases-windows.yml
+        operations/bits-service/use-bits-service.yml
+        operations/use-external-blobstore.yml
+        operations/use-gcs-blobstore-service-account.yml
+        operations/bits-service/configure-bits-service-gcs-service-account.yml
+        operations/enable-service-discovery.yml
+        operations/test/add-persistent-isolation-segment-diego-cell.yml
+        operations/increase-doppler-vm-type-from-minimal-to-small.yml
+- name: lite
+  env: snitch
+  deploy:
+    params:
+      OPS_FILES: |
+        operations/use-default-route-registrar-timeout-for-api.yml
+        operations/experimental/fast-deploy-with-downtime-and-danger.yml
+        operations/use-compiled-releases.yml
+        operations/bosh-lite.yml
+        operations/use-debug-level-logging.yml
+        operations/use-external-dbs.yml
+- name: stable
+  env: bellatrix
+  cf_d_branch: master
+  deploy:
+    params:
+      OPS_FILES: |
+        operations/scale-database-cluster.yml
+        operations/windows2016-cell.yml
+        operations/decrease-cc-event-retention.yml
