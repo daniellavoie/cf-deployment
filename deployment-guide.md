@@ -223,7 +223,7 @@ we'd advise that you add `operations/scale-to-one-az.yml`, `operations/use-compi
 bosh -e my-env -d cf deploy cf-deployment/cf-deployment.yml \
   -v system_domain=$SYSTEM_DOMAIN \
   -o operations/scale-to-one-az.yml \
-  -o operations/use-compiled-releases.yml
+  -o operations/use-compiled-releases.yml \
   -o operations/experimental/fast-deploy-with-downtime-and-danger.yml
 ```
 
